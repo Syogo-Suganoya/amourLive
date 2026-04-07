@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  characters UserCharacter[]
+}
+
+model Character {
+  id          String   @id
+  name        String
+  personality String   // JSON string stores personality traits
+  speechStyle String
+  coreRules   String   // JSON string of rules array
+  userCharacters UserCharacter[]
+}
+
+model UserCharacter {
+  id          String   @id @default(uuid())
+  userId      String
+  characterId String
+  user        User      @relation(fields: [userId], references: [id])
+  character   Character @relation(fields: [characterId], references: [id])
+  state       CharacterState?
+  memories    CharacterMemory[]
+  logs        ConversationLog[]
+  events      EventHistory[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, characterId])
+}
+
+model CharacterState {
+  id                String   @id @default(uuid())
+  userCharacterId   String   @unique
+  userCharacter     UserCharacter @relation(fields: [userCharacterId], references: [id])
+  affection         Int      @default(0)
+  trust             Int      @default(0)
+  relationshipStage String   @default("stranger") // stranger, acquaintance, friend, lover
+  flags             String   @default("{}") // JSON string for flags
+  updatedAt         DateTime @updatedAt
+}
+
+model CharacterMemory {
+  id              String   @id @default(uuid())
+  userCharacterId String
+  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
+  category        String   // likes, dislikes, events, etc.
+  content         String
+  importance      Int      @default(1)
+  createdAt       DateTime @default(now())
+}
+
+model ConversationLog {
+  id              String   @id @default(uuid())
+  userCharacterId String
+  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
+  role            String   // user or assistant
+  content         String
+  createdAt       DateTime @default(now())
+}
+
+model EventHistory {
+  id              String   @id @default(uuid())
+  userCharacterId String
+  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
+  eventName       String
+  occurredAt      DateTime @default(now())
+}
