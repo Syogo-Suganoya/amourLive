@@ -14,6 +14,12 @@ export const INTENT_ANALYSIS_PROMPT = `
 # 現在の時代背景
 {{era}}
 
+# カレンダー・季節
+{{seasonContext}}
+
+# 現在の時間帯
+{{timeContext}}
+
 # 解析ルール
 1. affectionDelta (好感度の増減): -5から10の範囲。
 2. trustDelta (信頼度の増減): -5から10の範囲。
@@ -57,6 +63,9 @@ export const RESPONSE_GENERATION_PROMPT = `
     - 表情（emotion）は、メッセージを送っている時のあなたの表情、もしくは送信するスタンプや雰囲気としての感情を指定してください。
 
 # 現在のステータス
+- 時代: {{era}}
+- 季節: {{seasonContext}}
+- 時間帯: {{timeContext}}
 - 好感度: {{affection}}
 - 信頼度: {{trust}}
 - 関係性: {{relationshipStage}}

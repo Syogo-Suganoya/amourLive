@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { ERA_CONFIG_DATA } from '@/lib/constants'
 
 /**
  * 「家で過ごす」アクション
@@ -9,7 +10,6 @@ import { prisma } from '@/lib/prisma'
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get('userId');
-  const LOCATIONS = ["cafe", "park", "library"];
 
   if (!userId) {
     return NextResponse.json({ error: 'userId is required' }, { status: 400 });
@@ -21,15 +21,37 @@ export async function POST(req: NextRequest) {
       include: { state: true, character: true }
     });
 
+    // ユーザー時間と日付を更新
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user) {
+      let nextDay = user.currentDay + 1;
+      let nextMonth = user.currentMonth;
+      if (nextDay > 30) {
+        nextDay = 1;
+        nextMonth = nextMonth >= 12 ? 1 : nextMonth + 1;
+      }
+      await prisma.user.update({
+        where: { id: userId },
+        data: { 
+          currentTime: 0,
+          currentDay: nextDay,
+          currentMonth: nextMonth
+        }
+      });
+    }
+
     let anyonePresent = false;
     const updates = userCharacters.map(async (uc) => {
       if (!uc.state) return;
+      
+      const era = uc.character.era || 'modern';
+      const availableLocations = ERA_CONFIG_DATA[era]?.locations || ["cafe", "park", "library"];
       
       // 50%の確率でどこかに出現
       const isPresent = Math.random() > 0.5;
       let nextLoc = "";
       if (isPresent) {
-        nextLoc = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
+        nextLoc = availableLocations[Math.floor(Math.random() * availableLocations.length)];
         anyonePresent = true;
       }
 
@@ -47,9 +69,11 @@ export async function POST(req: NextRequest) {
       const luckyIndex = Math.floor(Math.random() * userCharacters.length);
       const luckyUc = userCharacters[luckyIndex];
       if (luckyUc.state) {
+        const era = luckyUc.character.era || 'modern';
+        const availableLocations = ERA_CONFIG_DATA[era]?.locations || ["cafe", "park", "library"];
         await prisma.characterState.update({
           where: { id: luckyUc.state.id },
-          data: { currentLocation: LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)] }
+          data: { currentLocation: availableLocations[Math.floor(Math.random() * availableLocations.length)] }
         });
       }
     }

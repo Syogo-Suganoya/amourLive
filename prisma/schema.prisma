@@ -8,13 +8,16 @@ datasource db {
 }
 
 model User {
-  id         String          @id @default(uuid())
-  loginId    String          @unique
-  password   String
-  name       String
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  characters UserCharacter[]
+  id          String          @id @default(uuid())
+  loginId     String          @unique
+  password    String
+  name        String
+  currentTime Int             @default(0)
+  currentMonth Int            @default(4)
+  currentDay  Int             @default(1)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  characters  UserCharacter[]
 }
 
 model Character {

@@ -11,8 +11,10 @@ import {
   Heart,
   ShieldCheck,
   Smartphone,
-  Calendar
+  Calendar,
+  Sun
 } from "lucide-react";
+import { ERA_CONFIG_DATA, SEASONAL_EVENTS, getSeason } from "@/lib/constants";
 
 type Message = {
   role: "user" | "assistant";
@@ -51,44 +53,21 @@ const CHARACTER_IMAGE_MAP: Record<string, { folder: string; ext: string }> = {
   heroine_he_03: { folder: "seisho", ext: "png" },
 };
 
-const ERA_CONFIG: Record<string, {
-  label: string;
-  locations: string[];
-  locationLabels: Record<string, string>;
-  contactLabel: string;
-  messagingLabel: string;
-  contactIcon: any;
-}> = {
+const ERA_CONFIG: Record<string, any> = {
   modern: {
-    label: "現代",
-    locations: ["cafe", "park", "library"],
-    locationLabels: { cafe: "街角のカフェ", park: "セントラルパーク", library: "公立図書館" },
-    contactLabel: "連絡先リスト",
-    messagingLabel: "LIME",
+    ...ERA_CONFIG_DATA.modern,
     contactIcon: Smartphone,
   },
   showa: {
-    label: "昭和",
-    locations: ["kissaten", "school", "shopping_street"],
-    locationLabels: { kissaten: "純喫茶ひだまり", school: "放課後の学校", shopping_street: "夕暮れの商店街" },
-    contactLabel: "連絡先帳",
-    messagingLabel: "伝言",
+    ...ERA_CONFIG_DATA.showa,
     contactIcon: Smartphone,
   },
   edo: {
-    label: "江戸時代",
-    locations: ["chaya", "yokochou", "temple"],
-    locationLabels: { chaya: "峠の茶屋", yokochou: "夜の横丁", temple: "静かな古寺" },
-    contactLabel: "交友録",
-    messagingLabel: "文",
+    ...ERA_CONFIG_DATA.edo,
     contactIcon: Send,
   },
   heian: {
-    label: "平安時代",
-    locations: ["garden", "miko", "palace"],
-    locationLabels: { garden: "寝殿の庭園", miko: "神秘的な社", palace: "平安の宮中" },
-    contactLabel: "文箱",
-    messagingLabel: "御文",
+    ...ERA_CONFIG_DATA.heian,
     contactIcon: Send,
   }
 };
@@ -145,6 +124,9 @@ const CustomProgressBar = ({ value, color, icon: Icon, label }: { value: number,
 export default function Home() {
   const [view, setView] = useState<"auth" | "title" | "map" | "chat">("auth");
   const [selectedEra, setSelectedEra] = useState<string>("modern");
+  const [currentTime, setCurrentTime] = useState(0); 
+  const [currentMonth, setCurrentMonth] = useState(4);
+  const [currentDay, setCurrentDay] = useState(1);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState<string | null>(null);
   const [isDebugMode, setIsDebugMode] = useState(false);
@@ -197,7 +179,10 @@ export default function Home() {
     try {
       const res = await fetch(`/api/characters?userId=${loggedInUser.id}&isDebug=${isDebugMode}&era=${selectedEra}`);
       const data = await res.json();
-      if (Array.isArray(data)) setCharacters(data);
+      if (data.characters) setCharacters(data.characters);
+      if (data.currentTime !== undefined) setCurrentTime(data.currentTime);
+      if (data.currentMonth !== undefined) setCurrentMonth(data.currentMonth);
+      if (data.currentDay !== undefined) setCurrentDay(data.currentDay);
     } catch (err) {
       console.error("Failed to fetch characters:", err);
     }
@@ -312,6 +297,7 @@ export default function Home() {
         setMessages([{ role: "assistant", content: data.dialogue }]);
         setEmotion(data.emotion);
         setState(data.newState);
+        if (data.currentTime !== undefined) setCurrentTime(data.currentTime);
       } else if (data.error === 'TRIAL_LIMIT_EXCEEDED') {
         setIsTrialLimitReached(true);
       }
@@ -352,6 +338,7 @@ export default function Home() {
         ]);
         setEmotion(data.emotion);
         setState(data.newState);
+        if (data.currentTime !== undefined) setCurrentTime(data.currentTime);
       } else if (data.error === 'TRIAL_LIMIT_EXCEEDED') {
         setIsTrialLimitReached(true);
       }
@@ -393,12 +380,26 @@ export default function Home() {
   };
 
   const currentEraConfig = ERA_CONFIG[selectedEra] || ERA_CONFIG.modern;
+  const currentSeason = getSeason(currentMonth);
+  const seasonalEvent = SEASONAL_EVENTS[selectedEra]?.[currentSeason];
+  
+  const mapLocations = [...(currentEraConfig.locations || [])];
+  if (seasonalEvent && !mapLocations.includes(seasonalEvent.id)) {
+    mapLocations.push(seasonalEvent.id);
+  }
+
+  const getMapLabel = (loc: string) => {
+    if (seasonalEvent && loc === seasonalEvent.id) return seasonalEvent.label;
+    return currentEraConfig.locationLabels?.[loc] || loc;
+  }
+
   const characterImgConfig = CHARACTER_IMAGE_MAP[activeCharacter?.id || ""] || { folder: "misaki", ext: "jpg" };
   const portraitUrl = `/images/${characterImgConfig.folder}/${emotion}.${characterImgConfig.ext}`;
   const lastAssistantMessage = [...messages].reverse().find(m => m.role === "assistant")?.content || "";
 
   return (
     <div className="app-root">
+      <GlobalTimeOverlay time={currentTime} />
       <AnimatePresence mode="wait">
         {view === "auth" && (
           <motion.main 
@@ -467,6 +468,7 @@ export default function Home() {
                       const data = await res.json();
                       if (data.success) {
                         setLoggedInUser(data.user);
+                        if (data.user?.currentTime !== undefined) setCurrentTime(data.user.currentTime);
                         setView("title");
                       } else {
                         setAuthError(data.error || "Authentication failed");
@@ -557,6 +559,25 @@ export default function Home() {
                     <span className="slider round"></span>
                   </label>
                 </div>
+                <div className="game-time-indicator" style={{ 
+                  background: 'rgba(0,0,0,0.4)', 
+                  padding: '10px 20px', 
+                  borderRadius: '20px', 
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '15px',
+                  fontSize: '0.9rem',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  justifyContent: 'center'
+                }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Sun size={14} color="var(--primary-pink)" /> {currentMonth}月 {currentDay}日
+                  </span>
+                  <span style={{ opacity: 0.5 }}>|</span>
+                  <span style={{ opacity: 0.7 }}>現在の刻限:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--primary-pink)' }}>{getTimeLabel(currentTime)}</span>
+                </div>
               </div>
 
               <motion.button 
@@ -596,6 +617,25 @@ export default function Home() {
               >
                 次はどこへ行く？
               </motion.h1>
+              
+              <div className="map-time-badge" style={{
+                position: 'absolute',
+                top: '20px',
+                right: '80px',
+                background: 'rgba(0,0,0,0.6)',
+                padding: '5px 15px',
+                borderRadius: '15px',
+                fontSize: '0.8rem',
+                border: '1px solid rgba(255,255,255,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ opacity: 0.8 }}>{currentMonth}月 {currentDay}日</span>
+                <Calendar size={14} color="var(--primary-pink)" />
+                <span>{getTimeLabel(currentTime)}</span>
+              </div>
+
               <motion.p 
                 className="map-subtitle"
                 initial={{ opacity: 0 }}
@@ -611,8 +651,14 @@ export default function Home() {
                   if (!loggedInUser) return;
                   setIsLoading(true);
                   try {
-                    await fetch(`/api/action/home?userId=${loggedInUser.id}`, { method: "POST" });
-                    await fetchCharacters();
+                    const res = await fetch(`/api/action/home?userId=${loggedInUser.id}`, { method: "POST" });
+                    const data = await res.json();
+                    if (data.success) {
+                      setCurrentTime(data.currentTime);
+                      setCurrentMonth(data.currentMonth);
+                      setCurrentDay(data.currentDay);
+                      await fetchCharacters();
+                    }
                   } catch (err) {
                     console.error(err);
                   } finally {
@@ -647,11 +693,12 @@ export default function Home() {
               initial="hidden"
               animate="show"
             >
-              {currentEraConfig.locations.map((loc) => {
+              {mapLocations.map((loc) => {
+                const isSpecial = seasonalEvent && loc === seasonalEvent.id;
                 return (
                   <motion.div 
                     key={loc} 
-                    className="location-card premium-panel"
+                    className={`location-card premium-panel ${isSpecial ? 'special-event-card' : ''}`}
                     variants={{
                       hidden: { opacity: 0, y: 20 },
                       show: { opacity: 1, y: 0 }
@@ -662,15 +709,21 @@ export default function Home() {
                       backgroundImage: `linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.6)), url('/images/locations/${selectedEra}/${loc}.png')`,
                       backgroundSize: 'cover',
                       cursor: 'pointer',
-                      border: 'none',
+                      border: isSpecial ? '2px solid gold' : 'none',
                       color: 'white',
-                      minHeight: '200px'
+                      minHeight: '200px',
+                      position: 'relative'
                     }}
                   >
+                    {isSpecial && (
+                      <div style={{ position: 'absolute', top: '-10px', left: '-10px', background: 'gold', color: 'black', padding: '5px 15px', borderRadius: '15px', fontSize: '0.8rem', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>
+                        ✨ 季節限定スポット
+                      </div>
+                    )}
                     <div className="location-info" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
                         <MapPin size={16} />
-                        <h2 className="location-name" style={{ color: 'white', fontSize: '1.2rem', margin: 0 }}>{LOCATION_LABELS[loc]}</h2>
+                        <h2 className="location-name" style={{ color: 'white', fontSize: '1.2rem', margin: 0 }}>{getMapLabel(loc)}</h2>
                       </div>
                       <p style={{ opacity: 0.7, fontSize: '0.8rem' }}>様子を見に行く</p>
                     </div>
@@ -940,3 +993,33 @@ export default function Home() {
     </div>
   );
 }
+
+function getTimeLabel(time: number) {
+  const labels = ["早朝", "午前", "昼下がり", "夕暮れ", "夜", "深夜"];
+  return labels[time] || "未定";
+}
+
+function getTimeOverlayStyle(time: number): React.CSSProperties {
+  const styles: React.CSSProperties[] = [
+    { background: "rgba(0, 50, 100, 0.1)", mixBlendMode: 'multiply' }, // 早朝
+    { background: "none" }, // 午前
+    { background: "rgba(255, 200, 100, 0.05)", mixBlendMode: 'soft-light' }, // 昼下がり
+    { background: "rgba(255, 50, 0, 0.2)", mixBlendMode: 'overlay' }, // 夕暮れ
+    { background: "rgba(0, 0, 50, 0.3)", mixBlendMode: 'multiply' }, // 夜
+    { background: "rgba(0, 0, 20, 0.5)", mixBlendMode: 'multiply' }, // 深夜
+  ];
+  return styles[time] || {};
+}
+
+const GlobalTimeOverlay = ({ time }: { time: number }) => (
+  <div style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    pointerEvents: 'none',
+    zIndex: 999,
+    ...getTimeOverlayStyle(time)
+  }} />
+);

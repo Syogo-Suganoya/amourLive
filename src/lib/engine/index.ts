@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { generateJSON } from '@/lib/ai'
 import { INTENT_ANALYSIS_PROMPT, RESPONSE_GENERATION_PROMPT } from './prompts'
+import { ERA_CONFIG_DATA } from '@/lib/constants'
 
 export type ProcessResult = {
   dialogue: string
@@ -12,6 +13,7 @@ export type ProcessResult = {
     relationshipStage: string
     flags: Record<string, any>
   }
+  currentTime: number
 }
 
 /**
@@ -31,6 +33,7 @@ export async function processConversation(
     include: {
       character: true,
       state: true,
+      user: true,
       memories: { take: 10, orderBy: { importance: 'desc' } },
       logs: { take: 20, orderBy: { createdAt: 'desc' } }
     }
@@ -92,7 +95,9 @@ export async function processConversation(
       .replace('{{userInput}}', userInput)
       .replace('{{characterPersonality}}', uc.character.personality)
       .replace('{{relationshipStage}}', uc.state.relationshipStage)
-      .replace('{{era}}', getEraLabel(uc.character.era));
+      .replace('{{era}}', getEraLabel(uc.character.era))
+      .replace('{{timeContext}}', getTimeContext(uc.user.currentTime))
+      .replace('{{seasonContext}}', getSeasonContext(uc.user.currentMonth, uc.user.currentDay));
 
     intent = await generateJSON<{
       affectionDelta: number
@@ -182,7 +187,8 @@ export async function processConversation(
   });
 
   // 居場所の移動判定ロジック
-  const LOCATIONS = ["cafe", "park", "library"];
+  const currentEra = uc.character.era || 'modern';
+  const availableLocations = ERA_CONFIG_DATA[currentEra]?.locations || ["cafe", "park", "library"];
   const moveChance = 0.4; // 40%の確率で移動を検討
   if (Math.random() < moveChance) {
     let nextLocation = updatedState.currentLocation;
@@ -192,7 +198,7 @@ export async function processConversation(
       nextLocation = ""; // 20%の確率でMapから姿を消す（外出など）
     } else {
       // 既存の場所以外からランダムに選択
-      const otherPool = LOCATIONS.filter(l => l !== updatedState.currentLocation);
+      const otherPool = availableLocations.filter(l => l !== updatedState.currentLocation);
       nextLocation = otherPool[Math.floor(Math.random() * otherPool.length)];
     }
 
@@ -220,6 +226,8 @@ export async function processConversation(
       .replace('{{memories}}', memoryStr || 'なし')
       .replace('{{conversationLogs}}', logStr || '過去の会話なし')
       .replace('{{era}}', getEraLabel(uc.character.era))
+      .replace('{{timeContext}}', getTimeContext(uc.user.currentTime))
+      .replace('{{seasonContext}}', getSeasonContext(uc.user.currentMonth, uc.user.currentDay))
       .replace('{{intent}}', intent.intent)
       .replace('{{detectedAffection}}', intent.detectedAffection)
       .replace('{{summary}}', intent.summary)
@@ -254,6 +262,14 @@ export async function processConversation(
   }
 
   console.log('[Engine] Conversation update complete');
+
+  // --- 時間経過の処理 ---
+  const nextTime = (uc.user.currentTime + 1) % 6; // 6段階：0:早朝, 1:午前, 2:昼下がり, 3:夕暮れ, 4:夜, 5:深夜
+  await prisma.user.update({
+    where: { id: uc.userId },
+    data: { currentTime: nextTime }
+  });
+
   return {
     ...aiResponse,
     newState: {
@@ -261,7 +277,8 @@ export async function processConversation(
       trust: updatedState.trust,
       relationshipStage: updatedState.relationshipStage,
       flags: nextFlags
-    }
+    },
+    currentTime: nextTime
   };
 }
 
@@ -272,4 +289,35 @@ function getEraLabel(era: string) {
     case 'heian': return '平安時代';
     default: return '現代';
   }
+}
+
+function getTimeContext(time: number) {
+  const contexts = [
+    "早朝 (Early Morning) - 街が静まり返り、朝日が昇り始める時間帯",
+    "午前 (Morning) - 活動が始まり、活気に満ちた爽やかな時間帯",
+    "昼下がり (Afternoon) - 穏やかで暖かい、午後のひととき",
+    "夕暮れ (Evening) - 空が赤く染まり、一日が終わりに向かう少し寂しい時間帯",
+    "夜 (Night) - 暗くなり、落ち着いた時間が流れる夜の時間帯",
+    "深夜 (Late Night) - 静寂に包まれ、二人きりのような親密さが生まれる時間帯"
+  ];
+  return contexts[time] || contexts[0];
+}
+
+function getSeasonContext(month: number, day: number) {
+  let season = "春";
+  let description = "心地よい気候で、新しい始まりを感じる季節です。";
+  if (month >= 3 && month <= 5) {
+    season = "春";
+    description = "街ではお花見などの春らしいイベントが行われています。";
+  } else if (month >= 6 && month <= 8) {
+    season = "夏";
+    description = "暑い季節です。花火大会や夏祭りなどが開かれています。";
+  } else if (month >= 9 && month <= 11) {
+    season = "秋";
+    description = "涼しくなってきました。紅葉や月見の季節です。";
+  } else {
+    season = "冬";
+    description = "寒い季節です。雪が降ったり、イルミネーションが点灯したりしています。";
+  }
+  return `現在は${month}月${day}日 (${season}) です。${description}`;
 }

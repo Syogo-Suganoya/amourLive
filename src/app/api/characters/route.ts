@@ -54,7 +54,14 @@ export async function GET(req: NextRequest) {
       }
     }))
 
-    return NextResponse.json(formattedCharacters)
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+
+    return NextResponse.json({
+      characters: formattedCharacters,
+      currentTime: user?.currentTime || 0,
+      currentMonth: user?.currentMonth || 4,
+      currentDay: user?.currentDay || 1
+    })
   } catch (error) {
     console.error('Characters API Error:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
