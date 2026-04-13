@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,73 +8,77 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String          @id @default(uuid())
+  loginId    String          @unique
+  password   String
+  name       String
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
   characters UserCharacter[]
 }
 
 model Character {
-  id          String   @id
-  name        String
-  personality String   // JSON string stores personality traits
-  speechStyle String
-  coreRules   String   // JSON string of rules array
+  id             String          @id
+  name           String
+  era            String          @default("modern")
+  personality    String
+  speechStyle    String
+  coreRules      String
+  location       String          @default("")
   userCharacters UserCharacter[]
 }
 
 model UserCharacter {
-  id          String   @id @default(uuid())
+  id          String            @id @default(uuid())
   userId      String
   characterId String
-  user        User      @relation(fields: [userId], references: [id])
-  character   Character @relation(fields: [characterId], references: [id])
-  state       CharacterState?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   memories    CharacterMemory[]
+  state       CharacterState?
   logs        ConversationLog[]
   events      EventHistory[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  character   Character         @relation(fields: [characterId], references: [id])
+  user        User              @relation(fields: [userId], references: [id])
 
   @@unique([userId, characterId])
 }
 
 model CharacterState {
-  id                String   @id @default(uuid())
-  userCharacterId   String   @unique
+  id                String        @id @default(uuid())
+  userCharacterId   String        @unique
+  affection         Int           @default(0)
+  trust             Int           @default(0)
+  relationshipStage String        @default("stranger")
+  currentLocation   String        @default("")
+  flags             String        @default("{}")
+  updatedAt         DateTime      @updatedAt
   userCharacter     UserCharacter @relation(fields: [userCharacterId], references: [id])
-  affection         Int      @default(0)
-  trust             Int      @default(0)
-  relationshipStage String   @default("stranger") // stranger, acquaintance, friend, lover
-  flags             String   @default("{}") // JSON string for flags
-  updatedAt         DateTime @updatedAt
 }
 
 model CharacterMemory {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   userCharacterId String
-  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
-  category        String   // likes, dislikes, events, etc.
+  category        String
   content         String
-  importance      Int      @default(1)
-  createdAt       DateTime @default(now())
+  importance      Int           @default(1)
+  createdAt       DateTime      @default(now())
+  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
 }
 
 model ConversationLog {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   userCharacterId String
-  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
-  role            String   // user or assistant
+  role            String
   content         String
-  createdAt       DateTime @default(now())
+  createdAt       DateTime      @default(now())
+  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
 }
 
 model EventHistory {
-  id              String   @id @default(uuid())
+  id              String        @id @default(uuid())
   userCharacterId String
-  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
   eventName       String
-  occurredAt      DateTime @default(now())
+  occurredAt      DateTime      @default(now())
+  userCharacter   UserCharacter @relation(fields: [userCharacterId], references: [id])
 }
